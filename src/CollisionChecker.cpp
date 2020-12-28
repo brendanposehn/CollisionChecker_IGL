@@ -42,7 +42,7 @@ int main(int argc, char * argv[])
   };
 
   // Read in inputs as double precision floating point meshes
-  // read_triangle_mesh("/home/brend/BCCancer/CollisionChecker_Tester/bunny.off",V,F);
+  // read_triangle_mesh("/home/brend/BCCancer/CollisionChecker_IGL/bunny.off",V,F);
   //read_triangle_mesh("/home/brend/BCCancer/meshes/patient_and_carbon.ply", V, F); //should work with .ply files?
   // read_triangle_mesh("/home/brend/BCCancer/meshes/1e3pts_just_linac.ply",V,F);
   read_triangle_mesh("/home/brend/BCCancer/meshes/1e4pts_just_linac.ply",V,F);
@@ -140,28 +140,32 @@ int main(int argc, char * argv[])
 
   // are the IF faces the intersecting faces? is that corresponding to the first or second mesh? would assume first 
 
-  std::cout << "here is IF:" << std::endl;
-  std::cout << IF << std::endl;
+  // std::cout << "here is IF:" << std::endl;
+  // std::cout << IF << std::endl;
 
   Eigen::MatrixXd VI;
   Eigen::MatrixXi FI;
   std::cout << "Getting intersecting faces" << std::endl;
   IF_to_VandF(IF, VI, FI, swept_trans_linac, SF, true);
   std::cout << "Finished intersection work" << std::endl;
+  std::cout << "VI:  \n" << VI << std::endl; 
+  std::cout << "FI:  \n" << FI << std::endl; 
+
+  //VI is super messed up!
 
   igl::opengl::glfw::Viewer viewer2;
 
-  viewer2.data().set_mesh(RV_2p,Fp);
+  viewer2.data().set_mesh(VI,FI);
+  //nothing comes up at all???? hmm
   viewer2.data().show_lines = false;
   viewer2.data().set_face_based(true);
   add_viewer_axes(viewer2);
 
   viewer2.append_mesh();
 
-  viewer2.data().set_mesh(swept_trans_linac,SF);
+  viewer2.data().set_mesh(RV_2p,Fp);
   viewer2.data().show_lines = false;
   viewer2.data().set_face_based(true);
-  add_viewer_axes(viewer2);
 
   //set colors randombly for the viewer
   for (auto &data : viewer2.data_list){

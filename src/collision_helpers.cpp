@@ -163,6 +163,7 @@ void IF_to_VandF(Eigen::MatrixXi IF, Eigen::MatrixXd &VI, Eigen::MatrixXi &FI, E
   }
   //end METHOD 2
 
+  std::cout << "vert_inds: " << std::endl;
   for (auto it = vert_inds.begin(); it != vert_inds.end(); ++it){
     std::cout << *it << std::endl;
   }
@@ -189,8 +190,9 @@ void IF_to_VandF(Eigen::MatrixXi IF, Eigen::MatrixXd &VI, Eigen::MatrixXi &FI, E
     // std::cout << *itr << std::endl;
     // std::cout << V.row(*itr) << std::endl;
     VI.row(j) = V.row(*itr);
-    i++;
+    j++;
   }
+  //NEED TO WORK ON THIS 
 
   //make new F matrix with proper references to VI
   //this is going to be very computationally complex LIKELY EXISTS BETTER WAY TO DO THIS
