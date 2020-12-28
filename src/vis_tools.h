@@ -11,6 +11,7 @@
 #include <pcl/console/parse.h>
 
 void simpleVis(pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud, std::string windowName);
+void simpleVis(pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud, std::string windowName);
 void test_fxn(std::string msg);
 
 #endif

@@ -6,7 +6,8 @@ set -eux
 #
 # This might not be necessary since CMake seems to built custom packages. -h
 (
-    export DEBIAN_FRONTEND='noninteractive'
+    #export DEBIAN_FRONTEND='noninteractive'
+    export UBUNTU_FRONTEND='noninteractive'
     apt-get -y update
     apt-get -y upgrade
     apt-get -y install build-essential cmake git

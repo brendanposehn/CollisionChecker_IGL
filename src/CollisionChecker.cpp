@@ -1,205 +1,173 @@
+#include <igl/read_triangle_mesh.h> 
+#include <igl/get_seconds.h>
+#include <igl/material_colors.h>
+#include <igl/copyleft/marching_cubes.h>
+#include <igl/copyleft/swept_volume.h>
+#include <igl/copyleft/cgal/mesh_boolean.h> //bb added
+#include <igl/copyleft/cgal/intersect_other.h> //bb added
+#include <igl/opengl/glfw/Viewer.h>
+#include <igl/readPLY.h> //bb added 
+#include <igl/PI.h>
+#include <Eigen/Core>
+#include <Eigen/Dense>
+
 #include <iostream>
 
-#include <string>
+#include "collision_helpers.h"
 
-#include <igl/opengl/glfw/Viewer.h>
+#include <set>
 
-#include <boost/thread.hpp>
-#include <boost/shared_ptr.hpp>
+int main(int argc, char * argv[])
+{
+  using namespace std;
+  using namespace igl;
+  
+  Eigen::MatrixXi F,SF,Fp,FC;
+  Eigen::MatrixXd V,SV,Vp,VC;
+  bool show_swept_volume = false;
+  // Define a rigid motion
+  const auto & transform_lame = [](const double t)->Eigen::Affine3d
+  {
+    Eigen::Affine3d T = Eigen::Affine3d::Identity();
+    T.rotate(Eigen::AngleAxisd(t*2.*igl::PI,Eigen::Vector3d(0,1,0)));
+    T.translate(Eigen::Vector3d(0,0.125*cos(2.*igl::PI*t),0));
+    return T;
+  };
 
-#include <math.h>
+  const auto & transform_rot_x = [](const double t)->Eigen::Affine3d
+  {
+    Eigen::Affine3d T = Eigen::Affine3d::Identity();
+    T.rotate(Eigen::AngleAxisd(t*2.*igl::PI,Eigen::Vector3d(1,0,0)));
+    return T;
+  };
 
-#include <pcl/common/time.h>
-#include <pcl/visualization/pcl_visualizer.h>
-#include <pcl/io/pcd_io.h>
-#include <pcl/io/ply_io.h>
-#include <pcl/point_types.h>
- #include <pcl/common/transforms.h>
+  // Read in inputs as double precision floating point meshes
+  // read_triangle_mesh("/home/brend/BCCancer/CollisionChecker_Tester/bunny.off",V,F);
+  //read_triangle_mesh("/home/brend/BCCancer/meshes/patient_and_carbon.ply", V, F); //should work with .ply files?
+  // read_triangle_mesh("/home/brend/BCCancer/meshes/1e3pts_just_linac.ply",V,F);
+  read_triangle_mesh("/home/brend/BCCancer/meshes/1e4pts_just_linac.ply",V,F);
 
-#include <pcl/sample_consensus/method_types.h>
-#include <pcl/sample_consensus/model_types.h>
-#include <pcl/segmentation/sac_segmentation.h>
 
-#include <Eigen/Geometry> 
+  const double center_x = -1945.849976;
+  const double center_y = 788.838989;
+  const double center_z = 1120.229980; //as defined by the marker object
 
-#include "vis_tools.h"
+  Eigen::MatrixXd TV;
+  std::cout << "translating mesh" << std::endl;
+  TV = translate_mesh(V, -center_x, -center_y, -center_z);
+  std::cout << "done translating" << std::endl;
 
-int main(){
+  //these are the flat pieces to either side of the slightly tilted part^
+  Eigen::Vector3d pt_on_flat_1;
+  pt_on_flat_1 << -1041.829956, 708.521973, 1798.189941;
+  Eigen::Vector3d pt_on_flat_2;
+  pt_on_flat_2 << -1362.209961, 1425.619995, 1881.880005;
+  Eigen::Vector3d pt_on_flat_3;
+  pt_on_flat_3 << -1332.599976, 1352.079956, 2158.459961;
+  double theta_z = std::atan((pt_on_flat_1(0) - pt_on_flat_2(0))/(pt_on_flat_1(1) - pt_on_flat_2(1)));
 
-    // we are using cpp 11 standards
 
-    pcl::ScopeTime scope_time ("Test loop");
+  // all on the main circular part that should all be at the same z
+  Eigen::Vector3d pt_on_disc_1;
+  pt_on_disc_1 << -2096.889893, 1140.979980, 715.638977;
+  Eigen::Vector3d pt_on_disc_2;
+  pt_on_disc_2 << -1924.589966, 532.711975, 629.797974;
+  Eigen::Vector3d pt_on_disc_3;
+  pt_on_disc_3 << -1678.760010, 1000.619995, 676.361023;
 
-    std::string meshfile ("/home/brend/BCCancer/meshes/boy/fromWindows/doll_merged_mesh.ply");
-    pcl::PolygonMesh::Ptr polymesh (new pcl::PolygonMesh);
+  Eigen::MatrixXd RV_1, RV_2;
 
-    std::string cloudfile ("/home/brend/BCCancer/meshes/jermey/j_cloud.pcd");
-    const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>); //this is fine
-    pcl::io::loadPCDFile (cloudfile, *cloud);
-    
-    // simpleVis(cloud);
+  Eigen::Vector3d n_approx_z;
+  n_approx_z = (pt_on_disc_2 - pt_on_disc_1).cross(pt_on_disc_3 - pt_on_disc_1);
+  Eigen::Vector3d n_z;
+  n_z << 0, 0, 1;
+  Eigen::Vector3d rot_to_z_axis;
+  rot_to_z_axis = n_approx_z.cross(n_z);
+  rot_to_z_axis.normalize();
 
-    Eigen::MatrixXf body_points(4, 6); //deff size
+  double theta_rot_z = std::acos(n_z.dot(n_approx_z)/(n_approx_z.norm()));
 
-    //for jeremy
-    Eigen::Vector4f left_shoulder(-.101731, -.0520700, -.650879, 1);
-    Eigen::Vector4f right_shoulder(-.287711, .169372, -.801845, 1);
-    Eigen::Vector4f upper_spine(.209333, .252782, -.918178, 1);
-    Eigen::Vector4f lower_spine(.304443, .270415, -.988594, 1);
-    Eigen::Vector4f center_chest(-.217534, 0.053130, -.708382, 1);
-    Eigen::Vector4f center_shoulder_side(-.079892, -.160967, -.652748, 1);
+  Eigen::Matrix3d rot_mat_z;
+  rot_mat_z = Eigen::AngleAxisd(theta_rot_z, rot_to_z_axis); //does the rot_to_z_axis need to be normalized?
 
-    //TODO
-    //add method for picking these in this application
-    //make external file for rotations
+  RV_1 = rotate_mesh(TV, rot_mat_z);
 
-    enum points {LEFTSHOULDER, RIGHTSHOULDER, UPPERSPINE, LOWERSPINE, CENTERCHEST, CENTERSHOULDERSIDE};
+  Eigen::Vector3d n_approx_x;
+  n_approx_x = (pt_on_flat_2 - pt_on_flat_1).cross(pt_on_flat_3 - pt_on_flat_1);
+  Eigen::Vector3d n_x;
+  n_x << 1, 0, 0;
+  Eigen::Vector3d rot_to_x_axis;
+  rot_to_x_axis = n_approx_x.cross(n_x);
+  rot_to_x_axis.normalize();
 
-    body_points.col(LEFTSHOULDER) = left_shoulder;
-    body_points.col(RIGHTSHOULDER) = right_shoulder;
-    body_points.col(UPPERSPINE) = upper_spine;
-    body_points.col(LOWERSPINE) = lower_spine;
-    body_points.col(CENTERCHEST) = center_chest;
-    body_points.col(CENTERSHOULDERSIDE) = center_shoulder_side; 
+  double theta_rot_x = std::acos(n_x.dot(n_approx_x)/(n_approx_x.norm()));
 
-    //we want to have the centre chest at the origin
-    //but we want to shift it in the z a bit so the origin is at the z-level of the mid shoulder (viewed from the side)
+  Eigen::Matrix3d rot_mat_x;
+  rot_mat_x = Eigen::AngleAxisd(theta_rot_x, rot_to_x_axis); //does the rot_to_z_axis need to be normalized?
 
-    Eigen::Matrix4f trans_mat;
-    trans_mat << 1, 0, 0, -body_points(0, CENTERCHEST),
-                 0, 1, 0, -body_points(1, CENTERCHEST),
-                 0, 0, 1, -body_points(2, CENTERCHEST),
-                 0, 0, 0, 1; //fine to define it like this but not when const
-        
-    body_points = trans_mat*body_points;
+  RV_2 = rotate_mesh(RV_1, rot_mat_x);
 
-    //Still need to test all below
+  const int grid_size = 20;
+  const int time_steps = 100;
+  const double isolevel = 0; //defalt was 0.1
+  std::cerr<<"Computing swept volume...";
+  igl::copyleft::swept_volume(RV_2,F,transform_rot_x,time_steps,grid_size,isolevel,SV,SF);
+  std::cerr<<" finished."<< std::endl;
 
-    const pcl::PointCloud<pcl::PointXYZ>::Ptr translated_cloud (new pcl::PointCloud<pcl::PointXYZ> ());
+  std::cout << "reading patient" << std::endl;
+  read_triangle_mesh("/home/brend/BCCancer/meshes/1e5pts_patient_and_carbon.ply",Vp,Fp);
+  //has trouble reading the  w 1e5 pts?
 
-    // Eigen::Affine3f m;
-    // m = Eigen::Translation3f(-center_chest(0), -center_chest(1), -center_chest(2)); //dont think we need to do this
+  std::cout << "done reading patient" << std::endl;
 
-    //quite sure that the point cloud types are fine
-    pcl::transformPointCloud(*cloud, *translated_cloud, trans_mat);
+  Eigen::MatrixXd TVp, RV_1p, RV_2p, swept_trans_linac;
+  TVp = translate_mesh(Vp, -center_x, -center_y, -center_z);
 
-    simpleVis(translated_cloud, "Translated");
+  std::cout << "rotating patient 2x" << std::endl;
+  RV_1p = rotate_mesh(TVp, rot_mat_z);
+  RV_2p = rotate_mesh(RV_1p, rot_mat_x);
 
-    double theta_x = std::atan((body_points(LEFTSHOULDER, 2) - body_points(RIGHTSHOULDER, 2))/(body_points(LEFTSHOULDER, 1) - body_points(RIGHTSHOULDER, 1)));
-    double theta_y = std::atan((body_points(LEFTSHOULDER, 0) - body_points(RIGHTSHOULDER, 0))/(body_points(LEFTSHOULDER, 2) - body_points(RIGHTSHOULDER, 2)));
-    double theta_z = std::atan((body_points(LEFTSHOULDER, 1) - body_points(RIGHTSHOULDER, 1))/(body_points(LEFTSHOULDER, 0) - body_points(RIGHTSHOULDER, 0)));
+  double move_linac = -300; // [mm]
+  swept_trans_linac = translate_mesh(SV, move_linac, 0, 0);
+  
+  std::cout << "checking intersection...";
+  Eigen::MatrixXi IF;
+  const bool b = false;
+  bool a = igl::copyleft::cgal::intersect_other(swept_trans_linac,SF,RV_2p,Fp, b, IF); //this will give a 'true' for intersection
+  // bool a = igl::copyleft::cgal::intersect_other(SV,SF,RV_2p,Fp, b, IF); //this will give a 'false' for intersection
+  std::cout << "done checking intersection" << std::endl;
+  std::cout << a << std::endl;
 
-    // now we can produce the rotation matrices
+  // are the IF faces the intersecting faces? is that corresponding to the first or second mesh? would assume first 
 
-    Eigen::Matrix3f rot_z;
-    rot_z << std::cos(theta_z), -std::sin(theta_z), 0,
-             std::sin(theta_z), std::cos(theta_z), 0,
-             0, 0, 1;
-    Eigen::Matrix3f rot_y;
-    rot_y << std::cos(theta_y), 0, std::sin(theta_y),
-             0, 1, 0,
-            -std::sin(theta_y), 0, -std::cos(theta_y);
-    Eigen::Matrix3f rot_x;
-    rot_x << 1, 0, 0,
-             0, std::cos(theta_x), -std::sin(theta_x),
-             0, std::sin(theta_x), std::cos(theta_x);
-    Eigen::Matrix3f rot_mat_3;
-    Eigen::Matrix4f rot_mat_4;
-    rot_mat_4 = Eigen::MatrixXf::Zero(4, 4);
+  std::cout << "here is IF:" << std::endl;
+  std::cout << IF << std::endl;
 
-    rot_mat_3 = rot_z*rot_y*rot_x;  
+  Eigen::MatrixXd VI;
+  Eigen::MatrixXi FI;
+  std::cout << "Getting intersecting faces" << std::endl;
+  IF_to_VandF(IF, VI, FI, swept_trans_linac, SF, true);
+  std::cout << "Finished intersection work" << std::endl;
 
-    Eigen::Matrix3f rot_mat;
-    rot_mat = Eigen::AngleAxisf(-theta_x, Eigen::Vector3f::UnitX())
-      * Eigen::AngleAxisf(-theta_y, Eigen::Vector3f::UnitY())
-      * Eigen::AngleAxisf(theta_z, Eigen::Vector3f::UnitZ());
-    
-    rot_x = Eigen::AngleAxisf(-theta_x, Eigen::Vector3f::UnitX());
-    rot_y = Eigen::AngleAxisf(-theta_y, Eigen::Vector3f::UnitY());
-    rot_z = Eigen::AngleAxisf(theta_z, Eigen::Vector3f::UnitZ());
+  igl::opengl::glfw::Viewer viewer2;
 
-    Eigen::Matrix4f rot_x_;
-    rot_x_ = Eigen::MatrixXf::Zero(4, 4);
-    rot_x_.topLeftCorner(3,3) = rot_x;
-    rot_x_(3, 3) = 1;
+  viewer2.data().set_mesh(RV_2p,Fp);
+  viewer2.data().show_lines = false;
+  viewer2.data().set_face_based(true);
+  add_viewer_axes(viewer2);
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr rotated_cloud_x (new pcl::PointCloud<pcl::PointXYZ> ());
-    pcl::transformPointCloud (*translated_cloud, *rotated_cloud_x, rot_x_);
-    simpleVis(rotated_cloud_x, "Rotated X Only"); 
+  viewer2.append_mesh();
 
-    Eigen::Matrix4f rot_y_;
-    rot_y_ = Eigen::MatrixXf::Zero(4, 4);
-    rot_y_.topLeftCorner(3,3) = rot_y;
-    rot_y_(3, 3) = 1;
+  viewer2.data().set_mesh(swept_trans_linac,SF);
+  viewer2.data().show_lines = false;
+  viewer2.data().set_face_based(true);
+  add_viewer_axes(viewer2);
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr rotated_cloud_y (new pcl::PointCloud<pcl::PointXYZ> ());
-    pcl::transformPointCloud (*translated_cloud, *rotated_cloud_y, rot_y_);
-    simpleVis(rotated_cloud_y, "Rotated Y Only"); 
+  //set colors randombly for the viewer
+  for (auto &data : viewer2.data_list){
+      data.set_colors(0.5*Eigen::RowVector3d::Random().array() + 0.5);
+  } 
 
-    Eigen::Matrix4f rot_z_;
-    rot_z_ = Eigen::MatrixXf::Zero(4, 4);
-    rot_z_.topLeftCorner(3,3) = rot_z;
-    rot_z_(3, 3) = 1;
+  viewer2.launch();
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr rotated_cloud_z (new pcl::PointCloud<pcl::PointXYZ> ());
-    pcl::transformPointCloud (*translated_cloud, *rotated_cloud_z, rot_z_);
-    simpleVis(rotated_cloud_z, "Rotated Z Only"); 
-
-    rot_mat_4.topLeftCorner(3,3) = rot_mat;
-    rot_mat_4(3, 3) = 1;
-
-    pcl::PointCloud<pcl::PointXYZ>::Ptr rotated_cloud (new pcl::PointCloud<pcl::PointXYZ> ());
-    pcl::transformPointCloud (*translated_cloud, *rotated_cloud, rot_mat_4);
-
-    simpleVis(rotated_cloud, "All Rotations"); 
-    
-    // top of chest is at z=0, we want middle chest at z=0
-    
-    // Eigen::MatrixXf trans_mat_2(4, 4);
-    // trans_mat_2 << 1, 0, 0, 0,
-    //                0, 1, 0, 0,
-    //                0, 0, 1, -body_points(2, CENTERSHOULDERSIDE),
-    //                0, 0, 0, 1;
-
-    // pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud (new pcl::PointCloud<pcl::PointXYZ> ());
-    // pcl::transformPointCloud (*rotated_cloud, *transformed_cloud, rot_mat);
-    // body_points = trans_mat_2*body_points; //not sure if even need this anymore
-
-    // //x is height of person
-    // //y is width of person
-    // //z is spine to belly button
-
-    // //we can segment the arms from here just by defining planes vertical in z at specific y values
-
-    // size_t num_points = transformed_cloud->size();  
-
-    // pcl::ModelCoefficients::Ptr coefficients_rhs (new pcl::ModelCoefficients);
-    // pcl::PointIndices::Ptr inliers_rhs (new pcl::PointIndices); 
-    // coefficients_rhs->values = [0, 1, 0, -body_points(2, -RIGHTSHOULDER)]; //defines plane at y = RIGHTSHOULDER_Y
-    // //crete segmentation object
-    // pcl::SACSegmentation<pcl::PointXYZ> seg;
-    // seg.setOptimizeCoefficients (true);
-    // seg.setModelType (pcl::SACMODEL_PLANE);
-    // seg.setMethodType (pcl::SAC_RANSAC);
-    // seg.setDistanceThreshold (0.01);
-
-    // seg.setInputCloud (transformed_cloud);
-    // seg.segment (*inliers_rhs, *coefficients_rhs);
-
-    // pcl::PointCloud<pcl::PointXYZ>::Ptr body_left_arm (new pcl::PointCloud<pcl::PointXYZ> ());
-    // pcl::copyPointCloud(*transformed_cloud, inliers_rhs, body_left_arm);
-
-    // std::vector<int> inliers_rhs_vec = inliers_rhs->indices;
-    // std::vector<int> outliers_rhs_vec(num_points - inliers_rhs_vec.size());
-    // //now we can determine what is in and what is not
-    // for(int i = 0; i<num_points; i++){
-    //     if (std::count(inliers_rhs_vec.begin(), inliers_rhs_vec.end(), i) == 0){
-    //         outliers_rhs_vec.push_back(i);
-    //     }
-    // }
-    // //now we need to an outliers PointIndices object
-    // pcl::PointIndices::Ptr outliers_rhs (outliers_rhs_vec); //dont think this is right :)
-    // //copyPointCloud requires a PointIndices object
-
-    return 0;
 }

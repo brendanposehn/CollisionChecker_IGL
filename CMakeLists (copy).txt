@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.1 FATAL_ERROR)
-project(COLLISION_CHECKER)
+project(COLLISION_CHECKER_TESTER)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_EXTENSIONS OFF) # Disable GNU extensions (e.g., std=gnu++14).
@@ -26,7 +26,7 @@ find_package(LIBIGL REQUIRED QUIET)
 # Build the executable.
 file(GLOB SRCFILES src/*.cpp)
 # This should set everything in src/ to the SRCFILES
-add_executable(collision_checker ${SRCFILES})
-target_link_libraries(collision_checker igl::core igl::opengl igl::opengl_glfw igl::cgal)
-target_link_libraries(collision_checker ${PCL_LIBRARIES})
+add_executable(collision_checker_tester ${SRCFILES})
+target_link_libraries(collision_checker_tester igl::core igl::opengl igl::opengl_glfw igl::cgal)
+target_link_libraries(collision_checker_tester ${PCL_LIBRARIES})
 igl_copy_cgal_dll(${PROJECT_NAME})
