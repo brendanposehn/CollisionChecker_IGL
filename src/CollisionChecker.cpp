@@ -116,54 +116,48 @@ int main(int argc, char * argv[])
 
   std::cout << "reading patient" << std::endl;
   read_triangle_mesh("/home/brend/BCCancer/meshes/1e5pts_patient_and_carbon.ply",Vp,Fp);
-  //has trouble reading the  w 1e5 pts?
-
   std::cout << "done reading patient" << std::endl;
 
-  Eigen::MatrixXd TVp, RV_1p, RV_2p, swept_trans_linac;
+  Eigen::MatrixXd TVp, RV_1p, RV_2p, swept_trans_linac, RV_3p;
   TVp = translate_mesh(Vp, -center_x, -center_y, -center_z);
 
-  std::cout << "rotating patient 2x" << std::endl;
   RV_1p = rotate_mesh(TVp, rot_mat_z);
   RV_2p = rotate_mesh(RV_1p, rot_mat_x);
 
   double move_linac = -300; // [mm]
   swept_trans_linac = translate_mesh(SV, move_linac, 0, 0);
-  
+
+  Rotate mesh about x axis (x axis is parellel to spine)
+  RV_3p = rotate_mesh(RV_2p, 30*(igl::PI / 180),'x');
+
   std::cout << "checking intersection...";
   Eigen::MatrixXi IF;
   const bool b = false;
   bool a = igl::copyleft::cgal::intersect_other(swept_trans_linac,SF,RV_2p,Fp, b, IF); //this will give a 'true' for intersection
-  // bool a = igl::copyleft::cgal::intersect_other(SV,SF,RV_2p,Fp, b, IF); //this will give a 'false' for intersection
   std::cout << "done checking intersection" << std::endl;
   std::cout << a << std::endl;
 
-  // are the IF faces the intersecting faces? is that corresponding to the first or second mesh? would assume first 
-
-  // std::cout << "here is IF:" << std::endl;
-  // std::cout << IF << std::endl;
 
   Eigen::MatrixXd VI;
   Eigen::MatrixXi FI;
-  std::cout << "Getting intersecting faces" << std::endl;
   IF_to_VandF(IF, VI, FI, swept_trans_linac, SF, true);
-  std::cout << "Finished intersection work" << std::endl;
-  std::cout << "VI:  \n" << VI << std::endl; 
-  std::cout << "FI:  \n" << FI << std::endl; 
-
-  //VI is super messed up!
+  // IF_to_VandF(IF, VI, FI, RV_2p, Fp, false);
 
   igl::opengl::glfw::Viewer viewer2;
 
-  viewer2.data().set_mesh(VI,FI);
-  //nothing comes up at all???? hmm
+  viewer2.data().set_mesh(RV_2p,Fp);
   viewer2.data().show_lines = false;
   viewer2.data().set_face_based(true);
   add_viewer_axes(viewer2);
 
   viewer2.append_mesh();
 
-  viewer2.data().set_mesh(RV_2p,Fp);
+  Eigen::MatrixXd VI_transd;
+
+  // VI_transd = translate_mesh(VI, 0, 0, 10);
+
+  // viewer2.data().set_mesh(VI_transd,FI);
+  viewer2.data().set_mesh(VI,FI);
   viewer2.data().show_lines = false;
   viewer2.data().set_face_based(true);
 

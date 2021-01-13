@@ -112,19 +112,21 @@ void add_meshes(Eigen::MatrixXd VA, Eigen::MatrixXi FA, Eigen::MatrixXd VB, Eige
 }
 
 void IF_to_VandF(Eigen::MatrixXi IF, Eigen::MatrixXd &VI, Eigen::MatrixXi &FI, Eigen::MatrixXd V, Eigen::MatrixXi F, bool first){
-  //IF contains the faces that intersect from both
-  //V and F are the mesh we want to plot intersections of 
+  /*
+   * Produces a mesh that contains the intersecting faces which are determined using igl::copyleft::cgal::intersect_other
+   * Not necessary just to know if anything intersects, only useful for visualizing what intersects
+   * 
+   * IF    : intersecting faces matrix produced from igl::copyleft::cgal::intersect_other
+   * VI, FI: the vertex and face matrices (libigl-style) which will be populated with the intersecting faces
+   * V, F  : the vertex and face matrices (libigl-style) of the whole mesh that we want to show the faces that intersected
+   * first : true if V and F corresond to the first mesh inputted into igl::copyleft::cgal::intersect_other and false otherwise
+  */
   int c = 1;
-  //if we want the intersecting faces from the first entry
   if (first){
     c = 0;
   }
 
-  //if want to change to list:
-  //https://stackoverflow.com/questions/24139428/check-if-element-is-in-the-list-contains
-
   std::cout << "IF rows: " << IF.rows() << ". IF cols: " << IF.cols() << std::endl;
-
 
   //faces are the row indices of F that intersected
   Eigen::VectorXi int_faces = IF.col(c);
